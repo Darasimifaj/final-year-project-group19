@@ -1,0 +1,12 @@
+Model: BiLSTM
+Test Accuracy : 0.6325
+Test AUC      : 0.8088
+
+                  precision    recall  f1-score   support
+
+    Healthy (CN)       0.78      0.11      0.19        66
+Alzheimer's (AD)       0.62      0.98      0.76       100
+
+        accuracy                           0.63       166
+       macro avg       0.70      0.54      0.47       166
+    weighted avg       0.69      0.63      0.53       166

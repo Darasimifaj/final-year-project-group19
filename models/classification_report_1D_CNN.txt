@@ -1,0 +1,12 @@
+Model: 1D_CNN
+Test Accuracy : 0.9398
+Test AUC      : 0.9738
+
+                  precision    recall  f1-score   support
+
+    Healthy (CN)       0.87      1.00      0.93        66
+Alzheimer's (AD)       1.00      0.90      0.95       100
+
+        accuracy                           0.94       166
+       macro avg       0.93      0.95      0.94       166
+    weighted avg       0.95      0.94      0.94       166

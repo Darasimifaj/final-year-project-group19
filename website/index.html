@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NeuroScan AD — EEG Alzheimer's Classifier</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #080C14;
+    --surface:  #0D1420;
+    --surface2: #111927;
+    --border:   #1C2D45;
+    --border2:  #243650;
+    --cyan:     #00E5CC;
+    --cyan-dim: #00C2AD;
+    --red:      #FF3D5A;
+    --green:    #00E5A0;
+    --amber:    #FFB020;
+    --text:     #E8F0FF;
+    --text-2:   #7A90B0;
+    --text-3:   #3D5070;
+    --glow-c:   rgba(0,229,204,0.12);
+    --glow-r:   rgba(255,61,90,0.12);
+    --font-h:   'Syne', sans-serif;
+    --font-m:   'DM Mono', monospace;
+  }
+
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-m);
+    font-size: 13px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background-image:
+      linear-gradient(rgba(0,229,204,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,204,0.025) 1px, transparent 1px);
+    background-size: 44px 44px;
+    pointer-events: none;
+  }
+
+  .shell {
+    position: relative; z-index: 1;
+    max-width: 1300px;
+    margin: 0 auto;
+    padding: 0 28px 80px;
+  }
+
+  /* ── HEADER ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 28px 0 32px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 40px;
+  }
+
+  .logo { display: flex; align-items: center; gap: 14px; }
+
+  .logo-mark {
+    width: 44px; height: 44px;
+    border: 2px solid var(--cyan);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 24px var(--glow-c);
+  }
+  .logo-mark svg { width: 22px; height: 22px; }
+
+  .logo-text { font-family: var(--font-h); font-size: 20px; font-weight: 800; letter-spacing: -0.5px; }
+  .logo-text span { color: var(--cyan); }
+  .logo-sub { font-size: 11px; color: var(--text-2); letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
+
+  .status-badge {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 18px;
+    border: 1px solid var(--border2);
+    border-radius: 20px;
+    font-size: 11px; color: var(--text-2);
+    letter-spacing: 1px; text-transform: uppercase;
+  }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--amber);
+    box-shadow: 0 0 8px var(--amber);
+    animation: pulse 2s infinite;
+  }
+  .dot.online { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
+
+  /* ── STATS ── */
+  .stats-row {
+    display: grid; grid-template-columns: repeat(4,1fr); gap: 16px;
+    margin-bottom: 40px;
+  }
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    position: relative; overflow: hidden;
+  }
+  .stat::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--cyan), transparent);
+  }
+  .stat-label { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--text-3); margin-bottom: 8px; }
+  .stat-val { font-family: var(--font-h); font-size: 26px; font-weight: 700; color: var(--cyan); line-height: 1; }
+  .stat-sub { font-size: 11px; color: var(--text-2); margin-top: 4px; }
+
+  /* ── MAIN GRID ── */
+  .main-grid {
+    display: grid; grid-template-columns: 1fr 380px; gap: 24px;
+    margin-bottom: 24px;
+  }
+
+  /* ── CARD ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+  }
+  .card-title {
+    font-family: var(--font-h); font-size: 12px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--text-2);
+    margin-bottom: 20px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .card-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* ── UPLOAD ZONE ── */
+  .upload-zone {
+    border: 2px dashed var(--border2);
+    border-radius: 14px;
+    padding: 48px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s;
+    position: relative;
+    overflow: hidden;
+  }
+  .upload-zone:hover, .upload-zone.drag {
+    border-color: var(--cyan);
+    background: var(--glow-c);
+  }
+  .upload-zone input { display: none; }
+
+  .upload-icon {
+    width: 64px; height: 64px;
+    border: 2px solid var(--border2);
+    border-radius: 16px;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 20px;
+    font-size: 28px;
+    transition: all 0.25s;
+  }
+  .upload-zone:hover .upload-icon {
+    border-color: var(--cyan);
+    box-shadow: 0 0 20px var(--glow-c);
+  }
+
+  .upload-title { font-family: var(--font-h); font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+  .upload-sub { color: var(--text-2); font-size: 12px; line-height: 1.7; }
+
+  .upload-req {
+    margin-top: 24px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    text-align: left;
+  }
+  .upload-req-title { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--text-3); margin-bottom: 10px; }
+  .channel-grid {
+    display: grid; grid-template-columns: repeat(4,1fr); gap: 6px;
+  }
+  .ch-tag {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 11px;
+    color: var(--cyan);
+    text-align: center;
+  }
+
+  .upload-btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    margin-top: 24px;
+    background: var(--cyan);
+    color: #000;
+    font-family: var(--font-m);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border: none;
+    border-radius: 10px;
+    padding: 14px 32px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .upload-btn:hover { background: var(--cyan-dim); transform: translateY(-1px); }
+
+  /* ── FILE INFO ── */
+  .file-info {
+    display: none;
+    align-items: center; gap: 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-top: 16px;
+  }
+  .file-info.show { display: flex; }
+  .file-icon { font-size: 22px; }
+  .file-name { font-size: 13px; color: var(--text); flex: 1; }
+  .file-size { font-size: 11px; color: var(--text-3); }
+  .file-remove {
+    background: none; border: none; color: var(--red);
+    cursor: pointer; font-size: 16px; padding: 4px;
+    transition: opacity 0.2s;
+  }
+  .file-remove:hover { opacity: 0.7; }
+
+  /* ── ANALYSE BUTTON ── */
+  .analyse-btn {
+    display: none;
+    width: 100%;
+    align-items: center; justify-content: center; gap: 12px;
+    margin-top: 20px;
+    background: linear-gradient(135deg, var(--cyan), #00B8A0);
+    color: #000;
+    font-family: var(--font-m);
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border: none;
+    border-radius: 12px;
+    padding: 18px;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 20px rgba(0,229,204,0.25);
+  }
+  .analyse-btn.show { display: flex; }
+  .analyse-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,229,204,0.35); }
+  .analyse-btn:active { transform: translateY(0); }
+  .analyse-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  /* ── WAVEFORM ── */
+  .wave-wrap {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 20px;
+    height: 140px;
+    position: relative;
+    overflow: hidden;
+  }
+  .wave-placeholder {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 8px;
+    color: var(--text-3); font-size: 12px;
+  }
+  .wave-placeholder span { font-size: 24px; }
+  #waveCanvas { width: 100% !important; height: 100% !important; display: none; }
+
+  /* ── BAND POWERS ── */
+  .bands { display: grid; grid-template-columns: repeat(5,1fr); gap: 10px; margin-bottom: 20px; }
+  .band {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 8px; text-align: center;
+  }
+  .band-name { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3); margin-bottom: 6px; }
+  .band-bar-wrap { height: 40px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 6px; }
+  .band-bar { width: 22px; border-radius: 4px 4px 0 0; transition: height 0.7s cubic-bezier(.34,1.56,.64,1); min-height: 3px; }
+  .band-val { font-size: 10px; color: var(--text-2); }
+
+  /* ── RESULT PANEL ── */
+  .result-panel {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px 24px;
+    text-align: center;
+    transition: border-color 0.4s, box-shadow 0.4s;
+    min-height: 280px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .result-panel.healthy { border-color: var(--green); box-shadow: 0 0 40px rgba(0,229,160,0.1); }
+  .result-panel.alzheimer { border-color: var(--red); box-shadow: 0 0 40px rgba(255,61,90,0.1); }
+
+  .result-waiting { color: var(--text-3); font-size: 12px; text-align: center; }
+  .result-waiting-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.3; }
+
+  .result-icon { font-size: 52px; margin-bottom: 14px; animation: pop 0.5s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes pop { from{transform:scale(0);opacity:0} to{transform:scale(1);opacity:1} }
+
+  .result-class { font-family: var(--font-h); font-size: 24px; font-weight: 700; margin-bottom: 6px; }
+  .result-class.healthy { color: var(--green); }
+  .result-class.alzheimer { color: var(--red); }
+  .result-conf { font-size: 13px; color: var(--text-2); margin-bottom: 24px; }
+
+  .prob-row { width: 100%; margin-bottom: 12px; text-align: left; }
+  .prob-hdr { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-2); margin-bottom: 5px; }
+  .prob-track { height: 7px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .prob-fill { height: 100%; border-radius: 4px; transition: width 0.9s cubic-bezier(.34,1.56,.64,1); }
+  .prob-fill.cn { background: linear-gradient(90deg, var(--green), #00C896); }
+  .prob-fill.ad { background: linear-gradient(90deg, var(--red), #FF6B7A); }
+
+  /* ── SESSION LOG ── */
+  .log-wrap { max-height: 200px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border2) transparent; }
+  .log-entry {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; border-radius: 8px; margin-bottom: 6px;
+    font-size: 12px; background: var(--bg); border: 1px solid var(--border);
+    animation: slideIn 0.3s ease;
+  }
+  @keyframes slideIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+  .log-entry.healthy { border-left: 3px solid var(--green); }
+  .log-entry.alzheimer { border-left: 3px solid var(--red); }
+  .log-num { color: var(--text-3); font-size: 10px; min-width: 24px; }
+  .log-file { flex: 1; color: var(--text-2); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .log-pred { font-weight: 500; }
+  .log-conf { color: var(--text-3); font-size: 11px; }
+
+  /* ── CHARTS ROW ── */
+  .charts-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+  .chart-wrap { height: 260px; position: relative; }
+
+  /* ── TICKER ── */
+  .ticker-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 24px; }
+  .ticker {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 24px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .ticker-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .t-blue  { background: rgba(33,150,243,.12); }
+  .t-green { background: rgba(0,229,160,.12); }
+  .t-red   { background: rgba(255,61,90,.12); }
+  .ticker-label { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--text-3); }
+  .ticker-val { font-family: var(--font-h); font-size: 28px; font-weight: 700; line-height: 1.1; }
+  .tv-blue  { color: #64B5F6; }
+  .tv-green { color: var(--green); }
+  .tv-red   { color: var(--red); }
+
+  /* ── SPINNER ── */
+  .spinner { width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.2); border-top-color: #000; border-radius: 50%; animation: spin 0.6s linear infinite; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+
+  /* ── SCANNING ── */
+  .scanning::after {
+    content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(0,229,204,0.08), transparent);
+    animation: scan 1s ease-in-out infinite;
+  }
+  @keyframes scan { to{left:100%} }
+
+  footer {
+    margin-top: 60px; padding-top: 24px;
+    border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+    color: var(--text-3); font-size: 11px; letter-spacing: 1px;
+  }
+
+  @media (max-width: 900px) {
+    .main-grid { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: repeat(2,1fr); }
+    .charts-row { grid-template-columns: 1fr; }
+    .ticker-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#00E5CC" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M8 12c0-2.21 1.79-4 4-4s4 1.79 4 4-1.79 4-4 4"/>
+          <path d="M12 8v1M12 15v1M8 12H7M17 12h-1"/>
+        </svg>
+      </div>
+      <div>
+        <div class="logo-text">Neuro<span>Scan</span> AD</div>
+        <div class="logo-sub">EEG · Alzheimer's Classifier</div>
+      </div>
+    </div>
+    <div class="status-badge">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusText">Connecting...</span>
+    </div>
+  </header>
+
+  <!-- STATS -->
+  <div class="stats-row">
+    <div class="stat">
+      <div class="stat-label">Dataset</div>
+      <div class="stat-val" style="font-size:18px;">848,640</div>
+      <div class="stat-sub">EEG samples · 16 channels</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Best Model</div>
+      <div class="stat-val" id="statModel">—</div>
+      <div class="stat-sub" id="statSub">Loading results...</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Test Accuracy</div>
+      <div class="stat-val" id="statAcc">—</div>
+      <div class="stat-sub">Held-out test set</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">ROC-AUC</div>
+      <div class="stat-val" id="statAuc">—</div>
+      <div class="stat-sub">Binary classification</div>
+    </div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="main-grid">
+
+    <!-- LEFT -->
+    <div class="card">
+      <div class="card-title">📁 Upload EEG Data File</div>
+
+      <!-- Upload zone -->
+      <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()"
+           ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFile(event)">
+        <input type="file" id="fileInput" accept=".csv" onchange="fileSelected(this)"/>
+        <div class="upload-icon">⬆</div>
+        <div class="upload-title">Drop your EEG CSV here</div>
+        <div class="upload-sub">
+          or click to browse your files<br/>
+          Requires at least 1,024 rows of raw EEG signal data
+        </div>
+        <div class="upload-req">
+          <div class="upload-req-title">Required EEG Channels (16)</div>
+          <div class="channel-grid">
+            <div class="ch-tag">Fp1</div><div class="ch-tag">Fp2</div>
+            <div class="ch-tag">F7</div><div class="ch-tag">F3</div>
+            <div class="ch-tag">Fz</div><div class="ch-tag">F4</div>
+            <div class="ch-tag">F8</div><div class="ch-tag">T3</div>
+            <div class="ch-tag">C3</div><div class="ch-tag">Cz</div>
+            <div class="ch-tag">C4</div><div class="ch-tag">T4</div>
+            <div class="ch-tag">T5</div><div class="ch-tag">P3</div>
+            <div class="ch-tag">Pz</div><div class="ch-tag">P4</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- File info bar -->
+      <div class="file-info" id="fileInfo">
+        <span class="file-icon">📄</span>
+        <span class="file-name" id="fileName">—</span>
+        <span class="file-size" id="fileSize">—</span>
+        <button class="file-remove" onclick="clearFile()" title="Remove file">✕</button>
+      </div>
+
+      <!-- Analyse button -->
+      <button class="analyse-btn" id="analyseBtn" onclick="analyseFile()">
+        <span id="btnContent">🔬 &nbsp;Analyse EEG Data</span>
+      </button>
+
+      <!-- Waveform -->
+      <div style="margin-top:28px;">
+        <div class="card-title">⚡ EEG Signal Preview — Channel Fp1</div>
+        <div class="wave-wrap" id="waveWrap">
+          <div class="wave-placeholder" id="wavePlaceholder">
+            <span>〰</span>
+            Upload a file to see the EEG signal
+          </div>
+          <canvas id="waveCanvas"></canvas>
+        </div>
+      </div>
+
+      <!-- Band powers -->
+      <div class="card-title">📊 Frequency Band Powers</div>
+      <div class="bands">
+        <div class="band">
+          <div class="band-name">Delta</div>
+          <div class="band-bar-wrap"><div class="band-bar" id="bar-delta" style="background:#FF6584;height:3px"></div></div>
+          <div class="band-val" id="val-delta">—</div>
+        </div>
+        <div class="band">
+          <div class="band-name">Theta</div>
+          <div class="band-bar-wrap"><div class="band-bar" id="bar-theta" style="background:#FFB020;height:3px"></div></div>
+          <div class="band-val" id="val-theta">—</div>
+        </div>
+        <div class="band">
+          <div class="band-name">Alpha</div>
+          <div class="band-bar-wrap"><div class="band-bar" id="bar-alpha" style="background:#00E5CC;height:3px"></div></div>
+          <div class="band-val" id="val-alpha">—</div>
+        </div>
+        <div class="band">
+          <div class="band-name">Beta</div>
+          <div class="band-bar-wrap"><div class="band-bar" id="bar-beta" style="background:#7B8FFF;height:3px"></div></div>
+          <div class="band-val" id="val-beta">—</div>
+        </div>
+        <div class="band">
+          <div class="band-name">Gamma</div>
+          <div class="band-bar-wrap"><div class="band-bar" id="bar-gamma" style="background:#FF3D5A;height:3px"></div></div>
+          <div class="band-val" id="val-gamma">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div>
+      <!-- Result -->
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-title">🧠 Classification Result</div>
+        <div class="result-panel" id="resultPanel">
+          <div class="result-waiting">
+            <div class="result-waiting-icon">🧠</div>
+            <div style="font-size:14px;color:var(--text-2);margin-bottom:8px;">No data uploaded yet</div>
+            <div>Upload an EEG CSV file and click<br/><strong style="color:var(--cyan)">Analyse EEG Data</strong> to get a prediction</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Session log -->
+      <div class="card">
+        <div class="card-title">📋 Session Log</div>
+        <div class="log-wrap" id="logWrap">
+          <div style="color:var(--text-3);font-size:12px;padding:8px 0;">No analyses yet.</div>
+        </div>
+        <button onclick="clearLog()" style="
+          width:100%; margin-top:12px; background:transparent;
+          border:1px solid var(--border2); color:var(--text-2);
+          font-family:var(--font-m); font-size:11px; letter-spacing:1px;
+          text-transform:uppercase; border-radius:8px; padding:9px;
+          cursor:pointer; transition:all 0.2s;
+        " onmouseover="this.style.borderColor='var(--cyan)';this.style.color='var(--cyan)'"
+           onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--text-2)'">
+          Clear Log
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TICKERS -->
+  <div class="ticker-row">
+    <div class="ticker">
+      <div class="ticker-icon t-blue">🔬</div>
+      <div>
+        <div class="ticker-label">Total Analyses</div>
+        <div class="ticker-val tv-blue" id="tickTotal">0</div>
+      </div>
+    </div>
+    <div class="ticker">
+      <div class="ticker-icon t-green">✅</div>
+      <div>
+        <div class="ticker-label">Healthy (CN)</div>
+        <div class="ticker-val tv-green" id="tickCN">0</div>
+      </div>
+    </div>
+    <div class="ticker">
+      <div class="ticker-icon t-red">⚠</div>
+      <div>
+        <div class="ticker-label">Alzheimer's Detected</div>
+        <div class="ticker-val tv-red" id="tickAD">0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHARTS -->
+  <div class="charts-row">
+    <div class="card">
+      <div class="card-title">📈 Model Performance</div>
+      <div class="chart-wrap"><canvas id="perfChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🔬 Band Power Radar</div>
+      <div class="chart-wrap"><canvas id="radarChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">📊 Session Distribution</div>
+      <div class="chart-wrap"><canvas id="sessionChart"></canvas></div>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <span>NEUROSCAN AD · BABCOCK UNIVERSITY · SCHOOL OF COMPUTING · 2025</span>
+  <span id="footerModel">Best Model: —</span>
+</footer>
+
+<script>
+const API = 'http://localhost:5000/api';
+let waveChart = null, perfChart = null, radarChart = null, sessionChart = null;
+let sessionTotal = 0, sessionCN = 0, sessionAD = 0;
+let currentFile = null;
+let logCount = 0;
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    const res = await fetch(`${API}/status`);
+    const d   = await res.json();
+    const dot = document.getElementById('statusDot');
+    const txt = document.getElementById('statusText');
+    if (d.model_loaded) {
+      dot.classList.add('online');
+      txt.textContent = 'Model Loaded';
+    } else {
+      txt.textContent = 'Demo Mode';
+    }
+  } catch {
+    document.getElementById('statusText').textContent = 'Offline';
+  }
+  initWaveChart();
+  initCharts();
+  loadResults();
+}
+
+// ── DRAG & DROP ───────────────────────────────────────────────────────────
+function dragOver(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.add('drag');
+}
+function dragLeave(e) {
+  document.getElementById('dropZone').classList.remove('drag');
+}
+function dropFile(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file && file.name.endsWith('.csv')) {
+    processFile(file);
+  } else {
+    alert('Please drop a CSV file.');
+  }
+}
+
+// ── FILE SELECTION ────────────────────────────────────────────────────────
+function fileSelected(input) {
+  if (input.files[0]) processFile(input.files[0]);
+}
+
+function processFile(file) {
+  currentFile = file;
+  const info = document.getElementById('fileInfo');
+  document.getElementById('fileName').textContent = file.name;
+  document.getElementById('fileSize').textContent = (file.size / 1024).toFixed(1) + ' KB';
+  info.classList.add('show');
+  document.getElementById('analyseBtn').classList.add('show');
+}
+
+function clearFile() {
+  currentFile = null;
+  document.getElementById('fileInfo').classList.remove('show');
+  document.getElementById('analyseBtn').classList.remove('show');
+  document.getElementById('fileInput').value = '';
+}
+
+// ── ANALYSE ───────────────────────────────────────────────────────────────
+async function analyseFile() {
+  if (!currentFile) return;
+
+  const btn = document.getElementById('analyseBtn');
+  btn.disabled = true;
+  document.getElementById('btnContent').innerHTML = '<div class="spinner"></div> &nbsp;Analysing...';
+  document.getElementById('waveWrap').classList.add('scanning');
+
+  try {
+    const form = new FormData();
+    form.append('file', currentFile);
+
+    const res  = await fetch(`${API}/predict/upload`, { method: 'POST', body: form });
+    const data = await res.json();
+
+    if (data.error) {
+      alert('Error: ' + data.error);
+      return;
+    }
+
+    displayResult(data);
+    if (data.waveform)    updateWaveform(data.waveform);
+    if (data.band_powers) updateBands(data.band_powers);
+    addLog(data, currentFile.name);
+    updateTickers(data);
+    updateSessionChart();
+
+  } catch (e) {
+    alert('Could not reach the server. Make sure app.py is running.\n\n' + e.message);
+  } finally {
+    btn.disabled = false;
+    document.getElementById('btnContent').innerHTML = '🔬 &nbsp;Analyse EEG Data';
+    document.getElementById('waveWrap').classList.remove('scanning');
+  }
+}
+
+// ── DISPLAY RESULT ────────────────────────────────────────────────────────
+function displayResult(data) {
+  const panel = document.getElementById('resultPanel');
+  const isAD  = data.prediction === 1;
+  const cls   = isAD ? 'alzheimer' : 'healthy';
+  const conf  = (Math.max(...data.probabilities) * 100).toFixed(1);
+
+  panel.className = 'result-panel ' + cls;
+  panel.innerHTML = `
+    <div class="result-icon">${isAD ? '🔴' : '🟢'}</div>
+    <div class="result-class ${cls}">${data.class_name}</div>
+    <div class="result-conf">Confidence: ${conf}%</div>
+    <div class="prob-row">
+      <div class="prob-hdr"><span>Healthy (CN)</span><span>${(data.probabilities[0]*100).toFixed(1)}%</span></div>
+      <div class="prob-track"><div class="prob-fill cn" style="width:${data.probabilities[0]*100}%"></div></div>
+    </div>
+    <div class="prob-row" style="margin-top:12px">
+      <div class="prob-hdr"><span>Alzheimer's (AD)</span><span>${(data.probabilities[1]*100).toFixed(1)}%</span></div>
+      <div class="prob-track"><div class="prob-fill ad" style="width:${data.probabilities[1]*100}%"></div></div>
+    </div>
+  `;
+}
+
+// ── WAVEFORM ──────────────────────────────────────────────────────────────
+function initWaveChart() {
+  const ctx = document.getElementById('waveCanvas').getContext('2d');
+  waveChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: [], datasets: [{ data: [], borderColor: '#00E5CC', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 600 },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { display: false },
+        y: { grid: { color: 'rgba(0,229,204,0.05)' }, ticks: { color: '#3D5070', font: { size: 10 } } }
+      }
+    }
+  });
+}
+
+function updateWaveform(data) {
+  const step = Math.max(1, Math.floor(data.length / 400));
+  const pts  = data.filter((_,i) => i % step === 0);
+  document.getElementById('wavePlaceholder').style.display = 'none';
+  document.getElementById('waveCanvas').style.display = 'block';
+  waveChart.data.labels = pts.map((_,i) => i);
+  waveChart.data.datasets[0].data = pts;
+  waveChart.update('none');
+}
+
+// ── BAND BARS ─────────────────────────────────────────────────────────────
+function updateBands(powers) {
+  const vals = Object.values(powers);
+  const max  = Math.max(...vals, 0.001);
+  for (const [band, val] of Object.entries(powers)) {
+    const pct = Math.max(3, (val / max) * 40);
+    const bar = document.getElementById(`bar-${band}`);
+    const lbl = document.getElementById(`val-${band}`);
+    if (bar) bar.style.height = pct + 'px';
+    if (lbl) lbl.textContent  = val.toFixed(2);
+  }
+  updateRadar(powers);
+}
+
+// ── SESSION LOG ───────────────────────────────────────────────────────────
+function addLog(data, filename) {
+  logCount++;
+  const wrap = document.getElementById('logWrap');
+  if (logCount === 1) wrap.innerHTML = '';
+  const isAD = data.prediction === 1;
+  const conf = (Math.max(...data.probabilities)*100).toFixed(0);
+  const div  = document.createElement('div');
+  div.className = 'log-entry ' + (isAD ? 'alzheimer' : 'healthy');
+  div.innerHTML = `
+    <span class="log-num">#${logCount}</span>
+    <span class="log-file">${filename}</span>
+    <span class="log-pred" style="color:${isAD ? 'var(--red)' : 'var(--green)'}">${data.class_name}</span>
+    <span class="log-conf">${conf}%</span>
+  `;
+  wrap.insertBefore(div, wrap.firstChild);
+}
+
+function clearLog() {
+  logCount = 0; sessionTotal = 0; sessionCN = 0; sessionAD = 0;
+  document.getElementById('logWrap').innerHTML = '<div style="color:var(--text-3);font-size:12px;padding:8px 0;">No analyses yet.</div>';
+  ['tickTotal','tickCN','tickAD'].forEach(id => document.getElementById(id).textContent = '0');
+  updateSessionChart();
+}
+
+function updateTickers(data) {
+  sessionTotal++;
+  if (data.prediction === 0) sessionCN++;
+  else sessionAD++;
+  document.getElementById('tickTotal').textContent = sessionTotal;
+  document.getElementById('tickCN').textContent    = sessionCN;
+  document.getElementById('tickAD').textContent    = sessionAD;
+}
+
+// ── CHARTS ────────────────────────────────────────────────────────────────
+function initCharts() {
+  // Performance
+  const perfCtx = document.getElementById('perfChart').getContext('2d');
+  perfChart = new Chart(perfCtx, {
+    type: 'bar',
+    data: {
+      labels: ['1D-CNN', 'BiLSTM', 'CNN-LSTM'],
+      datasets: [
+        { label: 'Accuracy', data: [0,0,0], backgroundColor: '#00E5CC', borderRadius: 6 },
+        { label: 'AUC',      data: [0,0,0], backgroundColor: '#7B8FFF', borderRadius: 6 },
+        { label: 'F1',       data: [0,0,0], backgroundColor: '#FFB020', borderRadius: 6 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#7A90B0', font: { size: 10, family: 'DM Mono' } } } },
+      scales: {
+        x: { ticks: { color: '#7A90B0', font: { size: 10 } }, grid: { display: false } },
+        y: { min: 0, max: 1, ticks: { color: '#7A90B0', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
+      }
+    }
+  });
+
+  // Radar
+  const radCtx = document.getElementById('radarChart').getContext('2d');
+  radarChart = new Chart(radCtx, {
+    type: 'radar',
+    data: {
+      labels: ['Delta','Theta','Alpha','Beta','Gamma'],
+      datasets: [
+        { label: 'Uploaded', data: [0,0,0,0,0], borderColor: '#00E5CC', backgroundColor: 'rgba(0,229,204,0.1)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#00E5CC' },
+        { label: 'AD Avg',   data: [8,6,2,3,1],  borderColor: '#FF3D5A', backgroundColor: 'rgba(255,61,90,0.05)', borderWidth: 1.5, borderDash: [4,4], pointRadius: 3 },
+        { label: 'CN Avg',   data: [2,2,9,5,2],  borderColor: '#00E5A0', backgroundColor: 'rgba(0,229,160,0.05)', borderWidth: 1.5, borderDash: [4,4], pointRadius: 3 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#7A90B0', font: { size: 10, family: 'DM Mono' } } } },
+      scales: { r: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, pointLabels: { color: '#7A90B0', font: { size: 11 } } } }
+    }
+  });
+
+  // Session doughnut
+  const sesCtx = document.getElementById('sessionChart').getContext('2d');
+  sessionChart = new Chart(sesCtx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Healthy (CN)', "Alzheimer's (AD)"],
+      datasets: [{ data: [0, 0], backgroundColor: ['#00E5A0', '#FF3D5A'], borderWidth: 0, hoverOffset: 8 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#7A90B0', font: { size: 11, family: 'DM Mono' }, padding: 16 } }
+      },
+      cutout: '65%'
+    }
+  });
+}
+
+function updateRadar(powers) {
+  const vals = [powers.delta, powers.theta, powers.alpha, powers.beta, powers.gamma];
+  const max  = Math.max(...vals, 0.001);
+  radarChart.data.datasets[0].data = vals.map(v => (v/max)*10);
+  radarChart.update();
+}
+
+function updateSessionChart() {
+  sessionChart.data.datasets[0].data = [sessionCN, sessionAD];
+  sessionChart.update();
+}
+
+// ── LOAD RESULTS ──────────────────────────────────────────────────────────
+async function loadResults() {
+  try {
+    const res  = await fetch(`${API}/results`);
+    const data = await res.json();
+    const models = ['1D_CNN','BiLSTM','CNN_LSTM'];
+    const accs = [], aucs = [], f1s = [];
+    let bestAcc = 0, bestName = '—', bestAuc = 0;
+
+    for (const name of models) {
+      if (data[name]) {
+        const lines   = data[name].split('\n');
+        const accLine = lines.find(l => l.includes('Test Accuracy'));
+        const aucLine = lines.find(l => l.includes('Test AUC'));
+        const macro   = lines.find(l => l.includes('macro avg'));
+        const acc = accLine ? parseFloat(accLine.split(':')[1]) : 0;
+        const auc = aucLine ? parseFloat(aucLine.split(':')[1]) : 0;
+        const f1  = macro   ? parseFloat(macro.trim().split(/\s+/)[3]) : 0;
+        accs.push(acc); aucs.push(auc); f1s.push(f1);
+        if (acc > bestAcc) { bestAcc = acc; bestAuc = auc; bestName = name.replace('_',' '); }
+      } else { accs.push(0); aucs.push(0); f1s.push(0); }
+    }
+
+    if (accs.some(v => v > 0)) {
+      perfChart.data.datasets[0].data = accs;
+      perfChart.data.datasets[1].data = aucs;
+      perfChart.data.datasets[2].data = f1s;
+      perfChart.update();
+      document.getElementById('statModel').textContent = bestName;
+      document.getElementById('statSub').textContent   = 'Best by accuracy';
+      document.getElementById('statAcc').textContent   = (bestAcc * 100).toFixed(2) + '%';
+      document.getElementById('statAuc').textContent   = bestAuc.toFixed(4);
+      document.getElementById('footerModel').textContent = 'Best Model: ' + bestName;
+    }
+  } catch { /* server offline */ }
+}
+
+init();
+</script>
+</body>
+</html>

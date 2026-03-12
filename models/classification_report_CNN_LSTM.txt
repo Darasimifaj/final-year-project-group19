@@ -1,0 +1,12 @@
+Model: CNN_LSTM
+Test Accuracy : 0.6084
+Test AUC      : 0.8985
+
+                  precision    recall  f1-score   support
+
+    Healthy (CN)       1.00      0.02      0.03        66
+Alzheimer's (AD)       0.61      1.00      0.75       100
+
+        accuracy                           0.61       166
+       macro avg       0.80      0.51      0.39       166
+    weighted avg       0.76      0.61      0.47       166
